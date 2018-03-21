@@ -1,0 +1,293 @@
+ Procedure to configure complete job build.
+
+1.  Use a freestyle project modeled after complete.edinburgh_buildtest
+
+2.  Check "This build is parameterized"
+    SEND_TO
+    REBUILD_ALL
+    RUN_UNIT_TESTS
+
+3.  Check "Restrict where this project can be run"
+    Label Expression => master
+
+  ==Source Code Management==
+
+4.  Check "None"
+    All source code will be dealt with at a lower level.
+
+  ==Build Environment==
+
+5.  Check "Add timestamps to Console Output"
+
+  ==Build==
+
+6.  Copy artifact from another project
+    Project name      => dependency_calculator.<build_name>
+    Which build       => Latest successful build
+    Artifacts to copy => not_built_status_fix.groovy, abort_status_fix.groovy
+
+
+7.  Trigger builds
+
+    ** Wrap all triggered builds in a "Conditional steps (multiple)" to
+    encapsulate the build trigger with either the not_built_status_fix
+    or the abort_status_fix scripts depending on the lower level job
+
+    For the first build the "Run?" seetting should be set to "Always"
+
+    For all subsequent builds the "Run?" setting should be "Current build
+    status" with the following settings.
+
+    Worst status => Success
+    Best status  => Success
+
+    Standard build project settings
+
+    Enable "Block until the triggered projects finish their builds"
+    Set "Fail this build step if the triggered build is worse or equal to         => never
+    Set "Mark this build as failure if the triggered build is worse or equal to   => never
+    Set "Mark this build as unstable if the triggered build is worse or equal to  => never
+
+    Add Parameters => Current build parameters
+
+8.  Follow the maven builds with the following "Execute system Groovy script"
+    Execute system Groovy script
+       Groovy script file
+          not_built_status_fix.groovy
+       Click the advanced button
+          Variable bindings
+             JOBS_LIST="list of jobs from the previous projects to build line."
+
+    Follow the non maven builds with the following "Execute system Groovy script"
+    Execute system Groovy script
+       Groovy script file
+          abort_status_fix.groovy
+       Click the advanced button
+          Variable bindings
+             JOBS_LIST="list of jobs from the previous projects to build line."
+
+9.  Following builds on other projects
+
+    Wrap in a "Conditional steps multiple" with the following settings.
+    Run? => Current build status
+         Worst status => Success
+         Best status  => Success
+
+    Steps to run if condition is met
+         Trigger/call builds on other projects - There can be multiple jobs run in a single call. The order and the grouping of the builds are determined by the dependency analysis.
+
+         Configure the builds just like the either the maven or non maven build above.
+
+         For the "Variable bindings" in the "Execute system Groovy script" be sure to include all of the jobs listed in the "Trigger/call builds on other projects"
+
+=====================================================================================================
+=====================================================================================================
+=====================================================================================================
+ Procedure to configure maven build wrapper script.
+
+1.  Use a freestyle project modeled after slib-vbmonitor.edinburgh_buildtest
+
+2.  Check "This build is parameterized"
+    SEND_TO
+    REBUILD_ALL
+    RUN_UNIT_TESTS
+
+
+3.  Check "Restrict where this project can be run"
+    Label Expression => master
+
+  ==Source Code Management==
+
+4.  Check "None"
+    All source code will be dealt with at a lower level.
+
+  ==Build Environment==
+
+5.  Check "Add timestamps to Console Output"
+
+  ==Build==
+
+6.  Copy artifact from another project
+    Project name      => dependency_calculator.<build_name>
+    Which build       => Latest successful build
+    Artifacts to copy => abort_status_fix.groovy
+ 
+7.  Parent pom is the first build
+
+    Standard build project settings
+
+    Enable "Block until the triggered projects finish their builds"
+    Set "Fail this build step if the triggered build is worse or equal to         => never
+    Set "Mark this build as failure if the triggered build is worse or equal to   => never
+    Set "Mark this build as unstable if the triggered build is worse or equal to  => never
+
+    Add Parameters => Current build parameters
+
+8.  Execute system Groovy script
+       Groovy script file
+          abort_status_fix.groovy
+       Click the advanced button
+          Variable bindings
+             JOBS_LIST="name of parent pom build job"
+             PARENT_POM=true
+
+    The parent pom will allow the build to be set to NOT_BUILT if the parent pom job is ABORTED for lack of change.
+
+    The downstream result of this is that if there is no change in the parent pom build then none of the other build jobs will be triggered.
+    This is the behaivor that we want as any change below the parent pom should trigger a build in the parent pom build.
+    The one catch is the FMGrab build job as the source for this is outside of the parent pon and as such will always need to be checked during a build.
+
+    The parent pom should have dependencies listed in the dependency.properties of any build job outside of the current maven build.
+    This ensures that any dependency changes upstream will be be caught my downstreamm dependeny jobs.
+
+9.  Maven build modules
+
+    Wrap in a "Conditional steps multiple" with the following settings.
+    Run? => Current build status
+         Worst status => Success
+         Best status  => Success
+
+    Steps to run if condition is met
+         Trigger/call builds on other projects - There can be multiple jobs run in a single call. The order and the grouping of the builds are determined by the dependency analysis.
+
+         Configure the builds just like the parent build
+
+         For the "Variable bindings" in the "Execute system Groovy script" be sure to include all of the jobs listed in the "Trigger/call builds on other projects"
+         Do not use the "PARENT_POM" variable. just erase it.
+
+=====================================================================================================
+=====================================================================================================
+=====================================================================================================
+Procedure to configure lower level parent pom maven build module.
+
+1.  Use a maven project modeled after slib-vbmonitor-FM.edinburgh_buildtest
+
+2.  Check "This build is parameterized"
+    SEND_TO
+    REBUILD_ALL
+    RUN_UNIT_TESTS
+    SKIP_UPSTREAM_DEPENDENCY_CHECK
+
+    Only check the SKIP_UPSTREAM_DEPENDENCY_CHECK box if there are no dependencies outside of this maven build.
+
+
+3.  Check "Restrict where this project can be run"
+    Label Expression => <user value from previous builds>
+
+  ==Source Code Management==
+
+4.  Check "Subversion Modules"
+    Repository URL         => match the path to the source code directory of the parent pom.xml
+    Credentials            => pebuildrelease@teamforge.ctf.pe.vce.com
+    Local module directory => "."
+    Repository depth       => "files"
+
+  ==Build Environment==
+
+5.  Check "Add timestamps to Console Output"
+
+  ==Pre Steps==
+
+6.  Copy artifact from another project
+    Project name      => dependency_calculator.<build_name>
+    Which build       => Last successful build
+    Artifacts to copy => build_avoidance.groovy
+
+7.  Execute system Groovy script
+       Groovy script file
+          build_avoidance.groovy
+       Click the advanced button
+          Variable bindings
+             DEPENDENCY_JOB=dependency_calculator.<build_name>
+             CHILDREN_JOBS=<comma seperated list of the children jobs for this parent pom>
+
+    The CHILDREN_JOBS is the only thing that distinguishes a normal pom from a parent pom. It is used to ensure that when there are lower level job failures that they trigger a build.
+    At the higher level if it is determined that a parent pom build was avoided then the rest of the build is skipped.
+
+  ==Build==
+
+8.  Maven Version     => mirror what is the existing setting.
+    Root POM          => pom.xml
+    Goals and options => "-N deploy -Dfile=pom.xml -DrepositoryId=<repository as defined in build>
+
+    The goals and options settings will allow the parent pom.xml to be deployed to be used later in lower level builds.
+
+  ==Post-build Actions==
+
+9.  Archive the artifacts
+    Files to achrive  => pom.xml
+
+    This will allow the pom to be copied by Jenkins.
+=====================================================================================================
+=====================================================================================================
+=====================================================================================================
+
+Procedure to configure lower level component pom maven build module.
+
+1.  Use a maven project modeled after slib-vbmonitor-FMModel.edinburgh_buildtest
+
+  ==Maven Info Plugin Configuration==
+
+2.  Check "This build is parameterized"
+    SEND_TO
+    REBUILD_ALL
+    RUN_UNIT_TESTS
+    SKIP_UPSTREAM_DEPENDENCY_CHECK
+
+    If you know that this build job has no dependencies then you can check the default value for SKIP_UPSTREAM_DEPENDENCY_CHECK
+
+3.  Check "Restrict where this project can be run"
+    Same slaves as their original jobs
+
+  ==Source Code Management==
+
+4.  Check "Subversion Modules"
+    Repository URL         => match the path the module source code directory
+    Credentials            => pebuildrelease@teamforge.ctf.pe.vce.com
+    Local module directory => <module directory name>
+    Repository depth       => "infinity"
+
+  ==Build Environment==
+
+5.  Check "Add timestamps to Console Output"
+
+  ==Pre Steps==
+
+6.  Copy artifact from another project
+    Project name      => <parent pom build job>
+    Which build       => Last successful build
+    Artifacts to copy => pom.xml
+
+7.  Copy artifact from another project
+    Project name      => dependency_calculator.<build_name>
+    Which build       => Last successful build
+    Artifacts to copy => build_avoidance.groovy
+
+8.  Execute system Groovy script
+       Groovy script file
+          build_avoidance.groovy
+       Click the advanced button
+          Variable bindings
+             DEPENDENCY_JOB=dependency_calculator.<build_name>
+
+  ==Build==
+
+9.  Maven Version     => mirror what is the existing setting.
+    Root POM          => pom.xml
+    Goals and options => "Same as the original Goals and options"
+
+  ==Post-build Actions==
+
+10.  Archive the artifacts => "Mirror what is in the original builds"
+
+  ==Flexible publish==
+
+11.  Conditional action
+       Run? Boolean condition
+           Token => RUN_UNIT_TESTS
+       Action => Sonar
+
+12.  Conditional action
+       Run? Boolean condition
+           Token => RUN_UNIT_TESTS
+       Action => Publish JUnit test result report
